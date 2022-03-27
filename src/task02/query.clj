@@ -1,6 +1,7 @@
 (ns task02.query
   (:use [task02 helpers db]))
 (require '[clojure.string :as str])
+(require '[clojure.core.match :refer [match]])
 
 ;; Функция выполняющая парсинг запроса переданного пользователем
 ;;
@@ -36,46 +37,37 @@
 ;; > (parse-select "werfwefw")
 ;; nil
 
-(defn make-where-function [& args] 
-  (fn [field] (let [[key-str sing-str value-str] args
-                    field-value ((keyword key-str) field)
+(defn make-where-function [key-str sing-str value-str]
+  (fn [field] (let [field-value ((keyword key-str) field)
                     sing (load-string sing-str)
-                    value (read-string value-str)
-                    bool-res (sing field-value value)]
-                bool-res)))
+                    value (read-string value-str)]
+                (sing field-value value))))
 
-(defn parse-query [query index sel]
-  (case query
-    "where" [:where (make-where-function
-              (get sel (+ index 1))
-              (get sel (+ index 2))
-              (get sel (+ index 3)))]
-    "order" [:order-by (keyword (get sel (+ index 2)))]
-    "limit" [:limit (read-string (get sel (+ index 1)))]
-    "join" [:joins [[(keyword (get sel (+ index 3)))
-                     (get sel (+ index 1))
-                     (keyword (get sel (+ index 5)))]]]
-    nil))
-
+(defn parser [query]
+  (match query
+    ["select" tbl & _]
+    (-> (parser (vec (drop 2 query)))
+        (conj tbl))
+    ["where" key sing val & _]
+    (-> (parser (vec (drop 4 query)))
+        (conj (make-where-function key sing val))
+        (conj :where))
+    ["order" "by" filed & _]
+    (-> (parser (vec (drop 3 query)))
+        (conj (keyword filed))
+        (conj :order-by))
+    ["limit" n & _]
+    (-> (parser (vec (drop 2 query)))
+        (conj (read-string n))
+        (conj :limit))
+    ["join" tbl "on" field __ field-tbl & _]
+    (-> (parser (vec (drop 2 query)))
+        (conj [[(keyword field) tbl (keyword field-tbl)]])
+        (conj :joins))
+    :else nil))
 
 (defn parse-select [^String sel-string]
-  (if (clojure.string/includes? sel-string "select")
-    (let [sel (clojure.string/split sel-string #" ")
-          table-name (get sel 1)
-          sel-indexed (map-indexed #(list % %2) sel)]
-      (reduce (fn [acc [index query]]
-                (let [parsend-query  (parse-query query index sel)]
-                  (if parsend-query (apply conj acc parsend-query) acc)))
-              [table-name] sel-indexed))
-    nil))
-
- 
-(parse-select 
- "select student where id = 10 order by year limit 5 join subject on id = sid"
- )
-
- 
-
+  (parser (str/split sel-string #" ")))
 
 ;; Выполняет запрос переданный в строке.  Бросает исключение если не удалось распарсить запрос
 

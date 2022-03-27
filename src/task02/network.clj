@@ -12,12 +12,12 @@
 (defn handle-request [^Socket sock]
   ;; переопределить *in* & *out* чтобы они указывали на входной и выходной потоки сокета
   (binding [*in* (io/reader (.getInputStream sock))
-        *out*  (.getOutputStream sock)]
+        *out*  (io/writer (.getOutputStream sock))]
    (try
      (let [s (read-line)] ;; считать данные из переопределенного *in*
        (if (= (str/lower-case s) "quit")
          (deliver should-be-finished true)
-         (io/writer *out* (perform-query *in*))
+         (prn (perform-query s))
          ;;; 2) выполнить запрос при помощи perform-query и записать
                ;;; результат в переопределенный *out*
          ))
